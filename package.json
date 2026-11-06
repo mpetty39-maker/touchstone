@@ -1,0 +1,9 @@
+{
+  "name": "touchstone-race",
+  "version": "1.0.0",
+  "description": "Multiplayer puzzle race based on Touchstone",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node test/gen-stats.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": { "ws": "^8.18.0" }
+}
