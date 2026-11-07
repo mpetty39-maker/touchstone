@@ -24,13 +24,13 @@
     L5: [[0,0],[0,1],[0,2],[0,3],[1,3]]
   };
 
-  // Five levels: grid grows 4x4 -> 6x6. "par" = fewest taps that can solve it.
+  // Five levels: three 4x4 boards, then two 5x5. "par" = fewest taps that can solve it.
   var LEVELS = [
     { n: 4, k: 3, minSize: 3, maxSize: 4, parMin: 3, parMax: 4 },
     { n: 4, k: 3, minSize: 3, maxSize: 4, parMin: 4, parMax: 5 },
+    { n: 4, k: 3, minSize: 3, maxSize: 5, parMin: 5, parMax: 6 },
     { n: 5, k: 4, minSize: 3, maxSize: 5, parMin: 5, parMax: 6 },
-    { n: 5, k: 4, minSize: 3, maxSize: 5, parMin: 6, parMax: 7 },
-    { n: 6, k: 4, minSize: 4, maxSize: 5, parMin: 6, parMax: 7 }
+    { n: 5, k: 4, minSize: 3, maxSize: 5, parMin: 6, parMax: 7 }
   ];
 
   function norm(cells) {

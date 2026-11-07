@@ -70,7 +70,7 @@
       case 'start': onStart(m); break;
       case 'resync': onResync(m); break;
       case 'ev': onEvent(m); break;
-      case 'results': break;
+      case 'results': onResultsMsg(m); break;
     }
   }
 
@@ -87,13 +87,20 @@
       G = null; $('countdown').classList.add('hidden');
       show('lobby'); renderLobby();
     } else if (m.state === 'results') {
-      showResults();
+      if (screenName !== 'game') showResults();         // joined late or reconnected; otherwise onResultsMsg plays the ending
     } else if (m.state === 'racing') {
       renderStrip();
-      if (screenName === 'results') renderResults();
-      var p = mine();
-      if (p && p.done >= NUM_LEVELS && screenName !== 'results' && G && !G.locked) { G.finished = true; showResults(); }
     }
+  }
+  // Race over: say why, let a level celebration finish, then show the standings.
+  function onResultsMsg(m) {
+    if (screenName !== 'game' || !G) return;
+    G.over = true; G.running = false; G.selected = null;
+    var w = m.reason === 'finish' && m.winners[0] ? player(m.winners[0]) : null;
+    if (m.reason !== 'finish') A.play('timeup', 0, true);      // a full clear already played its fanfare
+    if (m.reason === 'finish') banner((w && w.id === me ? 'You' : (w ? w.name : 'Someone')) + ' cleared all five!', '');
+    else banner(m.reason === 'time' ? "Time's up!" : 'Race ended', 'Counting up the progress');
+    setTimeout(function () { if (screenName === 'game') showResults(); }, G.locked ? 1500 : 1700);
   }
 
   function dotHtml(v) { return '<span class="dot c' + v + '" aria-hidden="true">' + GLYPHS[v] + '</span>'; }
@@ -107,14 +114,23 @@
         (p.id === me ? ' (you)' : '') + (p.host ? '<span class="tagpill">Host</span>' : '') + '</li>';
     }).join('');
     var host = room.hostId === me;
+    renderLength(host);
     $('startBtn').classList.toggle('hidden', !host);
     $('waitHost').classList.toggle('hidden', host);
+  }
+
+  var LENGTHS = [2, 5, 10, 15];
+  function renderLength(host) {
+    $('lenPick').innerHTML = LENGTHS.map(function (m) {
+      return '<button class="seg-b' + (m === room.minutes ? ' on' : '') + '" data-m="' + m + '"' + (host ? '' : ' disabled') + '>' + m + ' min</button>';
+    }).join('');
+    $('lenNote').textContent = host ? 'First to clear all five levels wins. If time runs out, the farthest along wins.' : 'The host picks the race length.';
   }
 
   // ---------- game ----------
   function onStart(m) {
     if (!pings.length) offset = m.serverNow - Date.now();   // otherwise keep the ping-based estimate
-    G = { game: m.game, level: 0, board: null, phase: 0, selected: null, startAt: m.startAt,
+    G = { game: m.game, level: 0, board: null, phase: 0, selected: null, startAt: m.startAt, endAt: m.endAt, warned: false,
       running: false, locked: false, finished: false, taps: 0, cdShown: null, levelStart: m.startAt, rejoin: !!m.rejoin };
     initLevel();
     show('game');
@@ -134,7 +150,7 @@
     $('lvlNum').textContent = 'Level ' + (G.level + 1) + ' of ' + NUM_LEVELS;
     $('lvlSize').textContent = lv.n + '×' + lv.n + ' grid';
     buildBoard(); renderShapes(); updateBoard(); renderStrip();
-    setHint('Tap a gem, then the glowing shape.');
+    setHint('Tap a gem to preview, tap it again to place the shape.');
   }
   function buildBoard() {
     var lv = G.game.levels[G.level], b = $('board');
@@ -167,35 +183,30 @@
   function renderShapes() {
     var lv = G.game.levels[G.level];
     $('shapes').innerHTML = lv.shapes.map(function (s, i) {
-      return '<button class="shape' + (i === G.phase ? ' active' : '') + '" data-s="' + i + '" aria-label="Shape ' + (i + 1) + (i === G.phase ? ' (next)' : '') + '"><span class="ord">' + (i + 1) + '</span>' + shapeSvg(s) + '</button>';
+      return '<div class="shape' + (i === G.phase ? ' active' : '') + '" role="img" aria-label="Shape ' + (i + 1) + (i === G.phase ? ' (next)' : '') + '"><span class="ord">' + (i + 1) + '</span>' + shapeSvg(s) + '</div>';
     }).join('');
   }
   var hintTimer;
-  function setHint(t, flash) { $('hint').textContent = t; if (flash) { clearTimeout(hintTimer); hintTimer = setTimeout(function () { setHint(G && G.selected != null ? 'Now tap the glowing shape.' : 'Tap a gem, then the glowing shape.'); }, 1800); } }
+  function setHint(t, flash) { $('hint').textContent = t; if (flash) { clearTimeout(hintTimer); hintTimer = setTimeout(function () { setHint(G && G.selected != null ? 'Tap it again to place the shape.' : 'Tap a gem to preview, tap it again to place the shape.'); }, 1800); } }
 
+  function inPlay() { return G && G.running && !G.locked && !G.finished && serverNow() < G.endAt; }
   function onCell(i) {
-    if (!G || !G.running || G.locked || G.finished) return;
-    G.selected = G.selected === i ? null : i;
+    if (!inPlay()) return;
+    if (G.selected === i) return place(i);              // second tap on the same gem places the shape
+    G.selected = i;
     A.play('select', 0, true, i);
-    setHint(G.selected != null ? 'Now tap the glowing shape.' : 'Tap a gem, then the glowing shape.');
+    setHint('Tap it again to place the shape.');
     updateBoard();
   }
-  function onShape(idx) {
-    if (!G || !G.running || G.locked || G.finished) return;
-    var btn = $('shapes').children[idx];
-    if (idx !== G.phase) {
-      btn.classList.remove('shake'); void btn.offsetWidth; btn.classList.add('shake');
-      setHint('Shapes go in order. Use the glowing one.', true); return;
-    }
-    if (G.selected == null) { setHint('Pick a gem first.', true); return; }
-    var lv = G.game.levels[G.level], shape = lv.shapes[G.phase], cell = G.selected;
+  function place(cell) {
+    var lv = G.game.levels[G.level], shape = lv.shapes[G.phase];
     var cells = S.patternCells(lv.n, shape, cell);
     S.applyMove(G.board, lv.n, shape, cell);
     send({ t: 'tap', level: G.level, cell: cell });
     G.taps++; A.play('apply', 0, true, G.phase);
     G.phase = (G.phase + 1) % lv.shapes.length; G.selected = null;
     renderShapes(); updateBoard(cells);
-    if (S.isSolved(G.board)) onSolved(); else setHint('Tap a gem, then the glowing shape.');
+    if (S.isSolved(G.board)) onSolved(); else setHint('Tap a gem to preview, tap it again to place the shape.');
   }
   function onSolved() {
     G.locked = true;
@@ -206,7 +217,7 @@
     banner(last ? 'All clear!' : 'Level ' + (G.level + 1) + ' clear', fmt(ms) + ' · ' + G.taps + ' taps (best possible ' + lv.par + ')');
     setTimeout(function () {
       if (!G) return;
-      if (last) { G.finished = true; G.finishMs = serverNow() - G.startAt; showResults(); }
+      if (last) { G.finished = true; }                      // the server ends the race and sends results
       else { G.level++; initLevel(); }
     }, 1250);
   }
@@ -217,22 +228,26 @@
   }
 
   // ---------- clock / countdown ----------
+  function fmtRem(ms) { var s = Math.max(0, Math.ceil(ms / 1000)), m = Math.floor(s / 60); return m + ':' + (s % 60 < 10 ? '0' : '') + (s % 60); }
   function loop() {
-    if (!G || screenName === 'lobby' || screenName === 'home') return;
-    var d = G.startAt - serverNow(), cd = $('countdown');
+    if (!G || screenName === 'lobby' || screenName === 'home' || screenName === 'results') return;
+    var d = G.startAt - serverNow(), cd = $('countdown'), clock = $('clock');
     if (d > 0) {
       var n = Math.ceil(d / 1000);
       cd.classList.remove('hidden');
       if (G.cdShown !== n) { G.cdShown = n; cd.innerHTML = '<span>' + n + '</span>'; A.play('beep', 0, true); }
-      $('clock').textContent = '0:00.0';
+      clock.textContent = fmtRem(G.endAt - G.startAt); clock.classList.remove('low');
     } else {
-      if (!G.running) {
+      if (!G.running && !G.over) {
         G.running = true; G.cdShown = 0; cd.innerHTML = '<span>Go!</span>'; A.play('go', 0, true);
         setTimeout(function () { cd.classList.add('hidden'); }, 550);
       }
-      if (!G.finished) $('clock').textContent = fmt(serverNow() - G.startAt);
+      var rem = G.endAt - serverNow();
+      clock.textContent = fmtRem(rem);
+      clock.classList.toggle('low', rem <= 30000);
+      if (rem <= 10000 && rem > 0 && !G.warned) { G.warned = true; toast('10 seconds left'); }
     }
-    if (!(G.finished && screenName === 'results')) requestAnimationFrame(loop);
+    requestAnimationFrame(loop);
   }
 
   // ---------- standings ----------
@@ -291,24 +306,34 @@
     show('results'); $('countdown').classList.add('hidden'); renderResults();
   }
   function renderResults() {
-    if (!room) return;
-    var rk = ranked(), me_ = mine(), done = room.state === 'results';
-    var myPlace = rk.indexOf(me_) + 1;
-    var finished = me_ && me_.finishMs != null;
-    $('resTitle').textContent = done ? 'Final results' : finished ? 'You finished ' + ord(rk.filter(function (p) { return p.finishMs != null && p.finishMs <= me_.finishMs; }).length) + '!' : 'Race in progress';
-    $('resSub').textContent = done ? (rk[0] && rk[0].finishMs != null ? rk[0].name + ' wins in ' + fmt(rk[0].finishMs) : 'Nobody finished.') : finished ? 'Waiting for the others to finish…' : '';
-    var head = '<tr><th></th><th></th>'; for (var i = 1; i <= NUM_LEVELS; i++) head += '<th>L' + i + '</th>'; head += '<th>Total</th></tr>';
-    var best = []; for (var l = 0; l < NUM_LEVELS; l++) { var vals = rk.map(function (p) { return p.levelMs[l]; }).filter(function (x) { return x != null; }); best[l] = vals.length ? Math.min.apply(null, vals) : null; }
-    var rows = rk.map(function (p, idx) {
+    if (!room || !room.final) return;
+    var f = room.final, st = f.standings;
+    var winners = f.winners.map(player).filter(Boolean), names = winners.map(function (p) { return p.name; });
+    var iWon = f.winners.indexOf(me) >= 0;
+    if (f.reason === 'finish') {
+      $('resTitle').textContent = iWon ? 'You win!' : names[0] + ' wins!';
+      $('resSub').textContent = 'Cleared all five levels in ' + fmt(st[0].finishMs) + '.';
+    } else if (winners.length > 1) {
+      $('resTitle').textContent = iWon ? 'You tied for first!' : 'A tie for first';
+      $('resSub').textContent = names.join(' and ') + ' are level.';
+    } else {
+      $('resTitle').textContent = iWon ? 'You win!' : names[0] + ' wins!';
+      $('resSub').textContent = f.reason === 'time' ? 'Time ran out. Farthest along wins.' : 'The host ended the race.';
+    }
+    var head = '<tr><th></th><th></th>'; for (var i = 1; i <= NUM_LEVELS; i++) head += '<th>L' + i + '</th>'; head += '<th>Result</th></tr>';
+    var best = []; for (var l = 0; l < NUM_LEVELS; l++) { var vals = room.players.map(function (p) { return p.levelMs[l]; }).filter(function (x) { return x != null; }); best[l] = vals.length ? Math.min.apply(null, vals) : null; }
+    var rows = st.map(function (r) {
+      var p = player(r.id); if (!p) return '';
+      var tied = st.filter(function (o) { return o.rank === r.rank; }).length > 1;
       var td = ''; for (var i = 0; i < NUM_LEVELS; i++) { var x = p.levelMs[i]; td += '<td class="' + (x != null && x === best[i] ? 'best' : '') + '">' + (x != null ? (x / 1000).toFixed(1) : '–') + '</td>'; }
-      return '<tr class="' + (p.id === me ? 'me' : '') + '"><td>' + (idx + 1) + '</td><td>' + dotHtml(p.voice) + '<span class="nm2">' + esc(p.name) + '</span></td>' + td +
-        '<td class="tot">' + (p.finishMs != null ? fmt(p.finishMs) : p.done + '/' + NUM_LEVELS) + '</td></tr>';
+      var res = r.finishMs != null ? fmt(r.finishMs) : r.done + ' cleared<small>' + r.lit + '/' + r.cells + ' lit</small>';
+      return '<tr class="' + (r.id === me ? 'me' : '') + '"><td>' + r.rank + (tied ? '=' : '') + '</td><td><div class="who">' + dotHtml(p.voice) + '<span class="nm2">' + esc(p.name) + '</span></div></td>' + td + '<td class="tot">' + res + '</td></tr>';
     }).join('');
     $('resTable').innerHTML = head + rows;
     var host = room.hostId === me;
-    $('againBtn').classList.toggle('hidden', !(host && done));
-    $('endBtn').classList.toggle('hidden', !(host && !done));
-    $('resWait').classList.toggle('hidden', !(done && !host));
+    $('againBtn').classList.toggle('hidden', !host);
+    $('endBtn').classList.add('hidden');
+    $('resWait').classList.toggle('hidden', host);
     $('resWait').textContent = 'Waiting for the host to start another race…';
   }
 
@@ -352,14 +377,14 @@
   $('board').addEventListener('pointerdown', function (e) {
     var c = e.target.closest('.cell'); if (c) { e.preventDefault(); onCell(+c.dataset.i); }
   });
-  $('shapes').addEventListener('pointerdown', function (e) {
-    var b = e.target.closest('.shape'); if (b) { e.preventDefault(); onShape(+b.dataset.s); }
+  $('lenPick').addEventListener('click', function (e) {
+    var b = e.target.closest('.seg-b'); if (b && !b.disabled) send({ t: 'config', minutes: +b.dataset.m });
   });
 
   // prefill from storage / invite link
   var qs = new URLSearchParams(location.search);
   $('nameIn').value = (function () { try { return localStorage.getItem('ts_name') || ''; } catch (e) { return ''; } })();
   if (qs.get('code')) { $('codeIn').value = qs.get('code').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4); if (!$('nameIn').value) $('nameIn').focus(); }
-  window.__ts = { get G() { return G; }, get room() { return room; }, onCell: onCell, onShape: onShape };
+  window.__ts = { get G() { return G; }, get room() { return room; }, onCell: onCell };
   connect();
 })();

@@ -74,6 +74,9 @@ window.TSAudio = (function () {
         tone('sine', 88 + (extra % 5), t, 0.07, 0.07); break;
       case 'apply':
         tone('triangle', 55 + extra * 3, t, 0.16, 0.12); tone('sine', 67 + extra * 3, t + 0.03, 0.12, 0.07); break;
+      case 'timeup':
+        if (extra === 1) { seq(voice, [0, 7, 12], 0.12, 0.3, vol, 0.6); break; }        // someone cleared everything
+        tone('sine', 392, t, 0.35, 0.18, 0, true); tone('sine', 262, t + 0.3, 0.7, 0.18, 0, true); break;
       case 'beep':
         tone('sine', 660, t, 0.18, 0.18, 0, true); break;
       case 'go':

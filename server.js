@@ -13,6 +13,8 @@ const PUBLIC = path.join(__dirname, 'public');
 const MAX_PLAYERS = 8;
 const COUNTDOWN_MS = 4000;
 const NUM_LEVELS = S.LEVELS.length;
+const MINUTES = [2, 5, 10, 15];
+const DURATION_OVERRIDE = +process.env.DURATION_MS || 0;   // tests only
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json',
   '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
@@ -63,7 +65,7 @@ function publicPlayers(room) {
 }
 function broadcast(room, msg) { for (const p of room.players.values()) send(p.ws, msg); }
 function sendRoom(room) {
-  broadcast(room, { t: 'room', code: room.code, state: room.state, hostId: room.hostId, players: publicPlayers(room) });
+  broadcast(room, { t: 'room', code: room.code, state: room.state, hostId: room.hostId, minutes: room.minutes, endAt: room.endAt, final: room.final, players: publicPlayers(room) });
 }
 function resetPlayerForLevel(room, p) {
   const lv = room.game.levels[p.level];
@@ -77,22 +79,40 @@ function startRace(room) {
   room.clientGame = { levels: room.game.levels.map(({ n, shapes, start, par }) => ({ n, shapes, start, par })) };
   room.state = 'racing';
   room.startAt = Date.now() + COUNTDOWN_MS;
+  room.endAt = room.startAt + (DURATION_OVERRIDE || room.minutes * 60000);
+  room.final = null;
+  clearTimeout(room.timer);
+  room.timer = setTimeout(() => endRace(room, 'time'), room.endAt - Date.now());
   for (const p of room.players.values()) {
     Object.assign(p, { level: 0, lastDone: room.startAt, levelStart: room.startAt, levelMs: [], restarts: 0, finishMs: null });
     resetPlayerForLevel(room, p);
   }
-  broadcast(room, { t: 'start', game: room.clientGame, startAt: room.startAt, serverNow: Date.now() });
+  broadcast(room, { t: 'start', game: room.clientGame, startAt: room.startAt, endAt: room.endAt, serverNow: Date.now() });
   sendRoom(room);
 }
-function endRace(room) {
+// Final standings: farthest wins. Order by levels cleared, then by how many gems are lit
+// on the level in progress (as it stands when the race ends). Equal = shared rank (a tie).
+function endRace(room, reason, winnerId) {
+  if (room.state !== 'racing') return;
+  clearTimeout(room.timer);
+  const rows = [...room.players.values()].map((p) => ({
+    id: p.id, done: p.level, finishMs: p.finishMs,
+    lit: p.level >= NUM_LEVELS ? 0 : (p.board || []).reduce((a, b) => a + b, 0),
+    cells: p.level >= NUM_LEVELS ? 0 : (p.board || []).length
+  }));
+  rows.sort((a, b) => (a.finishMs != null) !== (b.finishMs != null) ? (a.finishMs != null ? -1 : 1)
+    : (a.finishMs != null ? a.finishMs - b.finishMs : b.done - a.done || b.lit - a.lit));
+  rows.forEach((r, i) => {
+    const prev = rows[i - 1];
+    const same = prev && r.finishMs == null && prev.finishMs == null && prev.done === r.done && prev.lit === r.lit;
+    r.rank = same ? prev.rank : i + 1;
+  });
+  room.final = { reason, standings: rows, winners: rows.filter((r) => r.rank === 1).map((r) => r.id) };
   room.state = 'results';
   sendRoom(room);
-  broadcast(room, { t: 'results' });
+  broadcast(room, { t: 'results', reason, winners: room.final.winners });
 }
-function checkAllDone(room) {
-  const active = [...room.players.values()].filter((p) => p.connected);
-  if (active.length && active.every((p) => p.level >= NUM_LEVELS)) endRace(room);
-}
+function dropRoom(r) { clearTimeout(r.timer); rooms.delete(r.code); }
 
 function handleTap(room, p, msg) {
   if (room.state !== 'racing' || Date.now() < room.startAt || p.level >= NUM_LEVELS) return;
@@ -122,12 +142,12 @@ function handleTap(room, p, msg) {
     p.finishMs = now - room.startAt;
     const finishPlace = [...room.players.values()].filter((q) => q.finishMs !== null).length;
     broadcast(room, { t: 'ev', kind: 'finish', pid: p.id, level: old, ms: p.levelMs[old], place: finishPlace, passed });
+    return endRace(room, 'finish', p.id);          // first to clear all five wins
   } else {
     resetPlayerForLevel(room, p);
     broadcast(room, { t: 'ev', kind: 'levelDone', pid: p.id, level: old, ms: p.levelMs[old], place, passed });
   }
   sendRoom(room);
-  checkAllDone(room);
 }
 function handleRestart(room, p) {
   if (room.state !== 'racing' || Date.now() < room.startAt || p.level >= NUM_LEVELS) return;
@@ -153,7 +173,7 @@ wss.on('connection', (ws) => {
       case 'create': {
         if (room) return;
         const code = newCode();
-        room = { code, state: 'lobby', players: new Map(), hostId: null, game: null, startAt: 0, lastActive: Date.now() };
+        room = { code, state: 'lobby', players: new Map(), hostId: null, game: null, startAt: 0, endAt: 0, minutes: 10, timer: null, final: null, lastActive: Date.now() };
         rooms.set(code, room);
         player = addPlayer(room, cleanName(msg.name), ws);
         room.hostId = player.id;
@@ -179,7 +199,7 @@ wss.on('connection', (ws) => {
         send(ws, { t: 'welcome', pid: p.id, token: p.token, code: r.code, rejoined: true });
         sendRoom(room);
         if (r.state === 'racing') {
-          send(ws, { t: 'start', game: r.clientGame, startAt: r.startAt, serverNow: Date.now(), rejoin: true });
+          send(ws, { t: 'start', game: r.clientGame, startAt: r.startAt, endAt: r.endAt, serverNow: Date.now(), rejoin: true });
           resync(room, p);
         } else if (r.state === 'results') send(ws, { t: 'results' });
         return;
@@ -187,14 +207,18 @@ wss.on('connection', (ws) => {
       case 'start':
         if (!room || player.id !== room.hostId || room.state !== 'lobby') return;
         return startRace(room);
+      case 'config':
+        if (!room || player.id !== room.hostId || room.state !== 'lobby') return;
+        if (MINUTES.includes(msg.minutes)) room.minutes = msg.minutes;
+        return sendRoom(room);
       case 'tap': return room && handleTap(room, player, msg);
       case 'restart': return room && handleRestart(room, player);
       case 'end':
         if (!room || player.id !== room.hostId || room.state !== 'racing') return;
-        return endRace(room);
+        return endRace(room, 'ended');
       case 'again':
         if (!room || player.id !== room.hostId || room.state !== 'results') return;
-        room.state = 'lobby'; room.game = null;
+        room.state = 'lobby'; room.game = null; room.final = null; room.endAt = 0;
         for (const p of [...room.players.values()]) if (!p.connected) room.players.delete(p.id);
         return sendRoom(room);
       case 'leave':
@@ -207,10 +231,9 @@ wss.on('connection', (ws) => {
     const r = room; const p = player;
     room = null; player = null;
     r.players.delete(p.id);
-    if (r.players.size === 0) return void rooms.delete(r.code);
+    if (r.players.size === 0) return void dropRoom(r);
     if (r.hostId === p.id) r.hostId = [...r.players.values()].find((q) => q.connected)?.id || [...r.players.keys()][0];
     sendRoom(r);
-    if (r.state === 'racing') checkAllDone(r);
   }
   ws.on('close', () => {
     if (!room) return;
@@ -222,14 +245,13 @@ wss.on('connection', (ws) => {
       setTimeout(() => {
         if (!p.connected && r.players.has(p.id) && r.state === 'lobby') {
           r.players.delete(p.id);
-          if (r.players.size === 0) return void rooms.delete(r.code);
+          if (r.players.size === 0) return void dropRoom(r);
           if (r.hostId === p.id) r.hostId = [...r.players.keys()][0];
           sendRoom(r);
         }
       }, 20000);
     }
     sendRoom(room);
-    if (room.state === 'racing') checkAllDone(room);
   });
 });
 
@@ -240,7 +262,7 @@ setInterval(() => {
   for (const [code, r] of rooms) {
     const anyConnected = [...r.players.values()].some((p) => p.connected);
     if (anyConnected) r.lastActive = now;
-    else if (now - r.lastActive > 30 * 60 * 1000) rooms.delete(code);
+    else if (now - r.lastActive > 30 * 60 * 1000) dropRoom(r);
   }
 }, 25000);
 

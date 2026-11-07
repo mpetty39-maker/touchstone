@@ -1,7 +1,10 @@
 # Touchstone Race
 
-Multiplayer puzzle race. Everyone in a game gets the same 5 puzzles (4x4 growing to 6x6);
-first to light every gem on all five levels wins.
+Multiplayer puzzle race. Everyone in a game gets the same 5 puzzles (three 4x4, then two 5x5).
+Tap a gem to preview, tap it again to place the glowing shape. The host picks a race length
+(2, 5, 10 or 15 minutes). First to light every gem on all five levels wins and ends the race.
+If time runs out, whoever got farthest wins: most levels cleared, then most lit gems on the
+level in progress. Equal progress is a shared rank.
 
 ## Run locally
     npm install
@@ -19,8 +22,9 @@ active games are lost on restart/deploy.
     node test/verify-par.js    # par solver vs. brute force (4x4) + dead-end check
     node test/protocol.js      # lobby/race protocol with bot clients
     node test/e2e.js /tmp      # two real browsers race all five levels (needs playwright)
+    E2E_MODE=timeup DURATION_MS=16000 node test/e2e.js /tmp   # same, but time runs out
 
 ## Tuning
 - `public/shared.js` LEVELS: grid size, number of shape buttons, shape sizes, and par range per level.
 - `public/audio.js` VOICES: each player's instrument.
-- `server.js`: MAX_PLAYERS, COUNTDOWN_MS.
+- `server.js`: MAX_PLAYERS, COUNTDOWN_MS, MINUTES (race length choices).
