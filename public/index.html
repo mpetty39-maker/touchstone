@@ -1,105 +1,69 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
 <head>
-<meta charset="utf-8">
-<title>Touchstone Race</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#0e1233">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%23f2c14e'/%3E%3Crect x='7' y='7' width='18' height='18' rx='4' fill='%237a4dff'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2575.7">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; -webkit-text-stroke: #000000; min-height: 14.0px}
+    p.p3 {margin: 0.0px 0.0px 12.0px 0.0px; font: 12.0px Times; -webkit-text-stroke: #000000}
+    p.p4 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.0px 'Helvetica Neue'; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85)}
+    p.p5 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; -webkit-text-stroke: #000000}
+    p.p6 {margin: 0.0px 0.0px 12.0px 0.0px; font: 12.0px Times; -webkit-text-stroke: #000000; min-height: 14.0px}
+    p.p8 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.0px 'Apple Color Emoji'; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85)}
+    li.li7 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times}
+    span.s1 {font-kerning: none}
+    span.s2 {font: 12.0px Times; font-kerning: none; -webkit-text-stroke: 0px #000000}
+    span.s3 {font-kerning: none; background-color: #a4a4a4}
+    ul.ul1 {list-style-type: disc}
+  </style>
 </head>
 <body>
-<div id="app">
-
-  <!-- HOME -->
-  <section id="home" class="screen">
-    <header class="brand">
-      <div class="logo" aria-hidden="true"><i></i></div>
-      <h1>Touchstone</h1>
-      <p class="tag">Same puzzles. Everyone races.</p>
-    </header>
-    <div class="card">
-      <label for="nameIn">Your name</label>
-      <input id="nameIn" maxlength="12" autocomplete="off" placeholder="Name" enterkeyhint="done">
-      <button id="createBtn" class="btn primary">Create a game</button>
-      <div class="or"><span>or join with a code</span></div>
-      <div class="row">
-        <input id="codeIn" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" class="code-in" aria-label="Game code">
-        <button id="joinBtn" class="btn">Join</button>
-      </div>
-      <p id="homeErr" class="err" role="alert"></p>
-    </div>
-    <details class="how">
-      <summary>How to play</summary>
-      <p>Tap a gem to preview where the glowing shape lands, then tap the same gem again to place it. The shape flips every gem it covers: lit goes dark, dark lights up. The gold-ringed square marks the gem you tap.</p>
-      <p>Shapes go in order, so you can't use one twice in a row. Light every gem to clear the level. There are five levels and the board grows. First to clear all five wins. If time runs out, whoever got farthest wins.</p>
-    </details>
-  </section>
-
-  <!-- LOBBY -->
-  <section id="lobby" class="screen hidden">
-    <div class="lobby-top">
-      <div class="small">Game code</div>
-      <div id="lobbyCode" class="big-code">----</div>
-      <button id="shareBtn" class="btn small-btn">Copy invite link</button>
-    </div>
-    <div class="card">
-      <h2>Players <span id="pCount" class="muted"></span></h2>
-      <ul id="lobbyList" class="plist"></ul>
-    </div>
-    <div class="card">
-      <h2>Race length</h2>
-      <div id="lenPick" class="seg"></div>
-      <p id="lenNote" class="small"></p>
-    </div>
-    <p class="muted center">Turn your volume up. Everyone hears each other's progress.</p>
-    <div class="stack">
-      <button id="testSnd" class="btn">Hear my sound</button>
-      <button id="startBtn" class="btn primary hidden">Start race</button>
-      <p id="waitHost" class="muted center hidden">Waiting for the host to start…</p>
-      <button id="leaveLobby" class="btn ghost">Leave game</button>
-    </div>
-  </section>
-
-  <!-- GAME -->
-  <section id="game" class="screen hidden">
-    <div class="topbar">
-      <div class="lvl"><span id="lvlNum">Level 1</span><span id="lvlSize" class="muted">4×4</span></div>
-      <div id="clock" class="clock" aria-label="Time left">0:00</div>
-      <button id="soundBtn" class="icon-btn" aria-label="Sound">🔊</button>
-    </div>
-    <div id="ticker" class="ticker" aria-live="polite"></div>
-    <div id="shapes" class="shapes" aria-label="Shapes, used in order"></div>
-    <div id="boardWrap" class="board-wrap"><div id="board" class="board"></div></div>
-    <p id="hint" class="hint">Tap a gem to preview, tap it again to place the shape.</p>
-    <div id="strip" class="strip" aria-label="Standings"></div>
-    <button id="restartBtn" class="btn ghost">Restart level</button>
-  </section>
-
-  <!-- RESULTS -->
-  <section id="results" class="screen hidden">
-    <h2 id="resTitle" class="res-title">Results</h2>
-    <p id="resSub" class="muted center"></p>
-    <div class="card tight"><table id="resTable" class="rt"></table></div>
-    <div class="stack">
-      <button id="againBtn" class="btn primary hidden">Play again</button>
-      <button id="endBtn" class="btn hidden">End race for everyone</button>
-      <p id="resWait" class="muted center hidden"></p>
-      <button id="leaveRes" class="btn ghost">Leave game</button>
-    </div>
-  </section>
-
-  <div id="toasts" aria-live="polite"></div>
-  <div id="countdown" class="countdown hidden"></div>
-  <div id="banner" class="banner hidden"></div>
-  <div id="conn" class="conn hidden">Reconnecting…</div>
-</div>
-<script src="shared.js"></script>
-<script src="audio.js"></script>
-<script src="app.js"></script>
+<p class="p1"><span class="s1"></span><br></p>
+<h1 style="margin: 0.0px 0.0px 14.9px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Touchstone</b><b></b></span></h1>
+<p class="p3"><span class="s1">Race to light all the gems.</span></p>
+<p class="p4"><span class="s2">Your name </span><span class="s3">Create a game</span></p>
+<p class="p5"><span class="s1">or join with a code</span></p>
+<p class="p4"><span class="s3">Join</span></p>
+<p class="p6"><span class="s1"></span><br></p>
+<p class="p5"><span class="s1">How to play</span></p>
+<p class="p3"><span class="s1">Light every gem to clear the level! Everyone gets the same puzzles.</span></p>
+<p class="p3"><span class="s1">Tap a gem to preview where the glowing shape lands, then tap the same gem again to place it. The shape flips every gem it covers: lit goes dark, dark lights up. The gold-ringed square marks the gem you tap.</span></p>
+<p class="p3"><span class="s1">Shapes go in order, so you can't use one twice in a row. There are five levels and the board grows. First to clear all five wins. If time runs out, whoever got farthest wins.</span></p>
+<p class="p5"><span class="s1">Game code</span></p>
+<p class="p5"><span class="s1">----</span></p>
+<p class="p4"><span class="s3">Copy invite link</span></p>
+<h2 style="margin: 0.0px 0.0px 14.9px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Players</b><b></b></span></h2>
+<ul class="ul1">
+  <li class="li7"></li>
+</ul>
+<h2 style="margin: 0.0px 0.0px 14.9px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Race length</b><b></b></span></h2>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p6"><span class="s1"></span><br></p>
+<p class="p3"><span class="s1">Turn your volume up. Everyone hears each other's progress.</span></p>
+<p class="p4"><span class="s3">Hear my sound</span><span class="s2"> </span><span class="s3">Start race</span></p>
+<p class="p3"><span class="s1">Waiting for the host to start…</span></p>
+<p class="p4"><span class="s3">Leave game</span></p>
+<p class="p5"><span class="s1">Level 14×4</span></p>
+<p class="p5"><span class="s1">0:00</span></p>
+<p class="p8"><span class="s3">🔊</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p3"><span class="s1">Tap a gem to preview, tap it again to place the shape.</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p4"><span class="s3">Restart level</span></p>
+<h2 style="margin: 0.0px 0.0px 14.9px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Results</b><b></b></span></h2>
+<p class="p6"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p4"><span class="s3">Play again</span><span class="s2"> </span><span class="s3">End race for everyone</span></p>
+<p class="p6"><span class="s1"></span><br></p>
+<p class="p4"><span class="s3">Leave game</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p5"><span class="s1">Reconnecting…</span></p>
 </body>
 </html>
